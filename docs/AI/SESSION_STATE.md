@@ -1,0 +1,43 @@
+# Session State
+
+- **Current Goal**: 建立纯离线可部署到 Cloudflare Pages 的安全 TOTP 保险库，满足密码解锁、IndexedDB 存储、多种导入（私钥向导、URL、二维码）与导出（单条/批量 URL/QR/JSON）需求，并依循 `Frontend-Design-Skill.md` 实现高品质视觉设计。
+- **Current Task**: 全面代码审计与全量缺陷加固 (Comprehensive Code Audit & Full-Scale Hardening)
+- **Current Status**: ALL AUDIT FIXES COMPLETED & FULLY VERIFIED (48/48 Tests Passed, Clean Production Build)
+- **Completed Work**:
+  - **Comprehensive Code Audit**: 针对密码学密钥安全、RFC 6238 / RFC 4648 实现、Web Crypto API 运行时依赖、IndexedDB 连接句柄、QR 摄像头生命周期、批量导入导出闭环以及 CSP 离线策略开展系统性审计。
+  - **Fix 1 (Camera Scanner VideoRef Deadlock)**: 修复 `ImportModal.tsx` 中 `<video>` 因条件渲染导致获取摄像头流时 `videoRef.current` 为 `null` 且未挂接 `srcObject` 的致命 Bug，升级为基于 `qrScanning` 的挂接机制。
+  - **Fix 2 (Camera Stream & Timer Lifecycle Cleanup)**: 修复 `ImportModal.tsx` 在关闭弹窗或切换 Tab 时摄像头媒体流及 300ms 识别定时器常驻泄漏问题；为所有弹窗补充遮罩点击与 ESC 键安全退出监听。
+  - **Fix 3 (Master Password Privacy & Context Hardening)**: 彻底移除 `VaultContextType` 中暴露的 `unlockedPassword`，在 `VaultProvider` 内部仅使用私有 `passwordRef` 保存主密码，防止 React DevTools 或外部 Hook 泄露主密码明文。
+  - **Fix 4 (True 100% Offline & CSP Hardening)**: 移除 `index.html` 中的 Google Fonts 外链依赖，全面依托本地原生操作系统字体栈；收紧 `public/_headers` CSP 策略，移除 `script-src 'unsafe-inline'` 及外部字体域名。
+  - **Fix 5 (Full-Lifecycle Encrypted Backup Export & Import)**: 兑现 `GOAL.md` 规范，在 `ExportBatchModal.tsx` 中新增“加密保险库备份 (.json)”导出功能；在 `ImportModal.tsx` 批量导入中实现加密备份识别与密码校验解密导入，并支持本地 `.json`/`.txt` 文件一键选择。
+  - **Fix 6 (IndexedDB Connection Pool Singleton)**: 在 `src/lib/storage.ts` 中实现连接单例 Promise 缓存与 `closeDB()` 处理，避免每次读写重复创建未关闭的 `IDBDatabase` 句柄。
+  - **Fix 7 (Multi-card Clock Scalability)**: 创建 `src/lib/clock.ts` 全局秒级时钟发布订阅机制，替代各 `TotpCard` 独立启动的 `setInterval` 与 `visibilitychange` 监听，实现多卡片统一对齐脉冲。
+  - **Fix 8 (Secure Context & Error Boundary)**: 新增 `src/components/common/ErrorBoundary.tsx` 错误兜底卡片；在 `App.tsx` 中增加 `isSecureContext` / Web Crypto 缺失诊断提示。
+  - **Fix 9 (Defensive TOTP Clamping)**: 在 `src/lib/totp.ts` 中对 `digits`（限制 4~10）和 `period`（大于 0）实施严格边界兜底，杜绝负数与非数字引起的计算异常。
+  - **Fix 10 (Password Security Policy & A11y)**: 将 `SetupVault.tsx` 主密码最小长度由 6 位升级为 8 位（推荐 12 位）；在 `CountdownProgress.tsx` 中补充标准 WAI-ARIA `progressbar` 属性。
+  - **Testing & Build Verification**: 新增 `src/tests/fixes-and-hardening.test.ts`，全套 7 个测试套件共 48 个用例 100% 通过；`npm run build` 纯静态单页打包顺利通过。
+- **Modified / Created Files**:
+  - `src/lib/clock.ts`
+  - `src/lib/totp.ts`
+  - `src/lib/storage.ts`
+  - `src/context/VaultContext.tsx`
+  - `src/components/common/ErrorBoundary.tsx`
+  - `src/components/dashboard/TotpCard.tsx`
+  - `src/components/dashboard/CountdownProgress.tsx`
+  - `src/components/auth/SetupVault.tsx`
+  - `src/components/modals/ImportModal.tsx`
+  - `src/components/modals/ExportBatchModal.tsx`
+  - `src/components/modals/ExportSingleModal.tsx`
+  - `src/components/modals/EditModal.tsx`
+  - `src/App.tsx`
+  - `index.html`
+  - `public/_headers`
+  - `src/tests/fixes-and-hardening.test.ts`
+  - `docs/AI/SESSION_STATE.md`
+- **Verification Commands & Results**:
+  - `npm run test`: 7 个测试文件全部通过，48 个测试用例 100% 成功通过（耗时 2.17s）。
+  - `npm run build`: `tsc && vite build` 成功通过类型检查并打包输出纯静态单页文件至 `dist/`（耗时 3.40s）。
+- **Unresolved Issues / Blockers**: None
+- **Risks and Assumptions**:
+  - 纯离线客户端模式，零外部网络请求，可直接部署至 Cloudflare Pages 或任何静态托管环境。
+- **Next Task**: 生产部署或后续功能迭代。
