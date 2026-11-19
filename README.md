@@ -77,7 +77,29 @@ npm run test
    - **Build output directory**: `dist`
 4. 点击 **Save and Deploy** 即可完成部署！
 
-### 方法 2: 使用 Wrangler CLI 直接部署
+### 方法 2: 使用自动化脚本一键部署 (推荐)
+本项目已内置智能部署脚本与自动化校验流程：
+
+```bash
+# 执行完整流程（RFC 官方测试向量校验 -> 生产构建 -> Cloudflare Pages 部署）
+npm run deploy
+# 或直接运行脚本
+./deploy.sh
+
+# 快速部署（跳过测试）
+npm run deploy:quick
+# 或
+./deploy.sh --skip-test
+```
+
+> **前置要求**：本地或 CI 环境已注入 Cloudflare 凭证环境变量：
+> ```bash
+> export CLOUDFLARE_API_TOKEN="<your_api_token>"
+> export CLOUDFLARE_ACCOUNT_ID="<your_account_id>" # 可选
+> ```
+> 部署成功后即可通过 `https://otp-vault-9xl.pages.dev` 访问。
+
+### 方法 3: 使用 Wrangler CLI 手动部署
 ```bash
 # 1. 安装依赖并执行本地构建
 npm install
