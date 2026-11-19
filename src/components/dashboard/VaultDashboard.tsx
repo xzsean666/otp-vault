@@ -14,7 +14,6 @@ import {
   Star,
   Layers,
   KeyRound,
-  ShieldCheck,
   AlertTriangle,
 } from 'lucide-react';
 
@@ -215,17 +214,6 @@ export const VaultDashboard: React.FC = () => {
           </button>
         </div>
       )}
-
-      {/* Security Tip Footer */}
-      <div className="mt-12 pt-6 border-t border-vault-800/60 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-3">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-vault-gold" />
-          <span>数据全流程经 PBKDF2 + AES-GCM-256 加密存于本机 IndexedDB</span>
-        </div>
-        <div>
-          <span>页面关闭或锁定时，解密密钥自动从内存销毁</span>
-        </div>
-      </div>
 
       {/* Modals */}
       <ImportModal

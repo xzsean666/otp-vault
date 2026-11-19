@@ -24,10 +24,10 @@ const VaultContent: React.FC = () => {
           </div>
           <h2 className="text-lg font-bold text-white mb-2">安全环境受限 (Insecure Context)</h2>
           <p className="text-xs text-slate-300 mb-4 leading-relaxed">
-            浏览器的 Web Crypto API 仅在安全上下文（HTTPS 或 localhost）中可用。当前页面正在通过未加密的 HTTP 或不信任的主机加载，无法执行硬件级强加密。
+            当前页面未通过安全的加密通道加载。为了保障数据安全，请使用 HTTPS 或安全网络环境访问。
           </p>
           <div className="p-3 rounded-lg bg-vault-950 font-mono text-[11px] text-slate-400 border border-vault-800">
-            请通过 https:// 或 localhost:3000 重新访问
+            请通过 https:// 或本地安全地址访问
           </div>
         </div>
       </div>
@@ -39,7 +39,7 @@ const VaultContent: React.FC = () => {
       <div className="flex-1 flex flex-col items-center justify-center p-8">
         <div className="w-10 h-10 border-2 border-vault-gold border-t-transparent rounded-full animate-spin mb-4" />
         <span className="text-xs font-mono text-slate-400">
-          初始化安全环境与本地数据库...
+          正在加载保险库...
         </span>
       </div>
     );

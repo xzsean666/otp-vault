@@ -1,22 +1,23 @@
 # Session State
 
 - **Current Goal**: 建立纯离线可部署到 Cloudflare Pages 的安全 TOTP 保险库，满足密码解锁、IndexedDB 存储、多种导入（私钥向导、URL、二维码）与导出（单条/批量 URL/QR/JSON）需求，并依循 `Frontend-Design-Skill.md` 实现高品质视觉设计。
-- **Current Task**: Cloudflare Pages 自动化部署脚本构建与上线验证 (Cloudflare Pages Automated Deployment Script & Verification)
-- **Current Status**: COMPLETED & LIVE DEPLOYED (Pages Project: otp-vault, Production URL Live)
+- **Current Task**: 移除界面技术实现说明文案与重新上线部署 (Clean Up Technical Explanations in UI & Redeploy)
+- **Current Status**: COMPLETED & LIVE REDEPLOYED (Clean Consumer-Facing UI, Live on Pages)
 - **Completed Work**:
-  - **Automated Deployment Script**: 编写了可执行的 `deploy.sh` 脚本，支持参数化选项（`-s/--skip-test`、`-b/--branch`、`-p/--project`），集成 Cloudflare 认证凭证检测、RFC 向量单元测试校验、TypeScript 类型与 Vite 生产构建、Pages 项目自动创建以及产物上传发布。
-  - **NPM Scripts Integration**: 在 `package.json` 中配置了 `npm run deploy` 与 `npm run deploy:quick`，并将 `wrangler` 纳为 devDependency 保障免交互极速部署。
-  - **Cloudflare Pages Production Deployment**: 借助环境注入的 `CLOUDFLARE_API_TOKEN` 与 `CLOUDFLARE_ACCOUNT_ID`，成功创建 Pages 项目 `otp-vault` 并完成首次生产环境构建部署。
-  - **Live Verification**: 线上域名验证成功（HTTP/2 200），精准生效严格的 CSP 策略（`connect-src 'none'`）与安全响应头（X-Frame-Options: DENY, Referrer-Policy: no-referrer 等）。
+  - **UI Wording Optimization**: 全面清除了界面中所有面向开发者的底层程序术语（如 `PBKDF2`、`AES-GCM`、`IndexedDB`、`RFC 4648 Base32`、`内存销毁`、`WebCrypto` 等），转换为简洁、优雅的自然用户语言。
+  - **Dashboard Cleanup**: 彻底移除了主面板底部的技术参数横幅提示区（原“数据全流程经 PBKDF2... 页面关闭或锁定时解密密钥自动从内存销毁”），使整体界面视觉更加专注、精简、极简现代。
+  - **Redeployment Verification**: 重新执行 `./deploy.sh`，48/48 测试用例通过，静态产物上传成功并刷新 Cloudflare Pages 线上部署。
 - **Modified / Created Files**:
-  - `deploy.sh` (新建一键部署自动化脚本)
-  - `package.json` (新增 `deploy` / `deploy:quick` 脚本及 `wrangler` 依赖)
-  - `package-lock.json`
-  - `README.md` (更新一键部署文档)
+  - `src/components/dashboard/VaultDashboard.tsx` (移除底部技术说明条)
+  - `src/components/auth/SetupVault.tsx` (精简主密码说明与初始化文案)
+  - `src/components/auth/UnlockVault.tsx` (精简解锁说明与抹除重置提示)
+  - `src/components/modals/ExportBatchModal.tsx` (精简加密备份说明)
+  - `src/components/modals/ImportModal.tsx` (精简密钥格式校验提示)
+  - `src/App.tsx` (精简安全环境提示与加载文案)
   - `docs/AI/SESSION_STATE.md`
 - **Verification Commands & Results**:
-  - `./deploy.sh`: 7 个测试套件 48 个用例通过 -> `npm run build` 成功 -> 部署至 Cloudflare Pages 成功。
-  - `curl -I https://otp-vault-9xl.pages.dev`: HTTP/2 200 OK，返回正确的 CSP 与安全响应头。
+  - `./deploy.sh`: 7 个测试套件 48 个用例全部通过，产物打包无报错，Pages 自动上传完成。
+  - `curl -I https://otp-vault-9xl.pages.dev`: HTTP/2 200 OK，生产环境最新版本生效。
 - **Unresolved Issues / Blockers**: None
 - **Risks and Assumptions**: None
 - **Next Task**: 项目已上线生产环境，可随时进行自定义域名绑定或后续体验迭代。

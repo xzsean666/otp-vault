@@ -59,7 +59,7 @@ export const SetupVault: React.FC = () => {
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-vault-850 border border-vault-700/60 shadow-lg shadow-black/40">
             <span className="w-2 h-2 rounded-full bg-vault-gold animate-pulse"></span>
             <span className="text-xs font-mono font-medium tracking-wider text-slate-300 uppercase">
-              100% Client-Side WebCrypto
+              纯本地安全加密
             </span>
           </div>
         </div>
@@ -78,7 +78,7 @@ export const SetupVault: React.FC = () => {
               初始化离线保险库
             </h1>
             <p className="text-sm text-slate-400 max-w-xs mx-auto leading-relaxed">
-              设置您的主密码。所有双因子密钥将通过 PBKDF2 + AES-GCM 256 位强加密储存于浏览器本地。
+              设置您的主密码，用于保护并加密您的所有双因子口令。
             </p>
           </div>
 
@@ -156,8 +156,8 @@ export const SetupVault: React.FC = () => {
             <div className="p-3.5 rounded-xl bg-vault-950/60 border border-vault-gold/20 flex items-start gap-3 text-xs text-slate-300">
               <AlertTriangle className="w-4 h-4 text-vault-gold flex-shrink-0 mt-0.5" />
               <div className="leading-relaxed">
-                <strong className="text-vault-gold block font-semibold mb-0.5">零知识安全提示</strong>
-                本程序为纯静态离线架构，无后端数据库。若遗忘主密码，任何人都无法为您恢复数据。请务必妥善记录。
+                <strong className="text-vault-gold block font-semibold mb-0.5">安全提示</strong>
+                所有数据仅保存在您当前设备本地。若遗忘主密码将无法找回数据，请务必妥善记录。
               </div>
             </div>
 
@@ -177,7 +177,7 @@ export const SetupVault: React.FC = () => {
               {loading ? (
                 <>
                   <div className="w-4 h-4 border-2 border-vault-950 border-t-transparent rounded-full animate-spin" />
-                  <span>加密生成派生密钥中...</span>
+                  <span>正在初始化保险库...</span>
                 </>
               ) : (
                 <>

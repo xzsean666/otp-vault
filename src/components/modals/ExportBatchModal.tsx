@@ -188,8 +188,8 @@ export const ExportBatchModal: React.FC<ExportBatchModalProps> = ({
               <div className="p-3.5 rounded-xl bg-vault-950 border border-vault-emerald/30 flex items-start gap-2.5 text-xs text-slate-300">
                 <ShieldCheck className="w-4 h-4 text-vault-emerald flex-shrink-0 mt-0.5" />
                 <span className="leading-relaxed">
-                  <strong>安全端到端加密：</strong>
-                  直接导出受主密码保护的完整密文载荷（PBKDF2-HMAC-SHA256 + AES-GCM-256）。可安全存放于云盘、U盘或 Git 中，他人无密码无法解密。
+                  <strong>加密安全备份：</strong>
+                  直接导出受主密码保护的完整密文备份。可安全存放于云盘或 U 盘，无主密码无法解密。
                 </span>
               </div>
               <div className="relative rounded-xl bg-vault-950 border border-vault-800 p-3 max-h-44 overflow-y-auto font-mono text-[11px] text-slate-400">

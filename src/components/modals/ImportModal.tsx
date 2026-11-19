@@ -539,7 +539,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                 {secret && !isValidBase32(normalizeBase32(secret)) && (
                   <p className="text-[11px] text-rose-400 mt-1 flex items-center gap-1">
                     <AlertCircle className="w-3 h-3" />
-                    密钥不是有效的 RFC 4648 Base32 编码 (仅允许 A-Z 及 2-7)
+                    密钥格式不正确 (仅支持英文字母 A-Z 与数字 2-7)
                   </p>
                 )}
               </div>

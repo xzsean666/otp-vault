@@ -71,7 +71,7 @@ export const UnlockVault: React.FC = () => {
               解锁您的保险库
             </h1>
             <p className="text-sm text-slate-400 max-w-xs mx-auto leading-relaxed">
-              输入您的主密码以解密本地硬件级 AES-GCM 保护的 TOTP 账户列表。
+              输入您的主密码以访问已保存的双因子口令。
             </p>
           </div>
 
@@ -154,7 +154,7 @@ export const UnlockVault: React.FC = () => {
                 抹除并重置保险库？
               </h3>
               <p className="text-xs text-slate-400 text-center mb-6 leading-relaxed">
-                此操作将从当前浏览器的 IndexedDB 中永久删除所有已保存的双因子密钥和密码散列。此操作不可逆！
+                此操作将从本机永久删除所有已保存的双因子口令，该操作不可撤销！
               </p>
               <div className="flex gap-3">
                 <button
