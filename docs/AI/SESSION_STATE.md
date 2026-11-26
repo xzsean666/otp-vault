@@ -1,23 +1,24 @@
 # Session State
 
 - **Current Goal**: 建立纯离线可部署到 Cloudflare Pages 的安全 TOTP 保险库，满足密码解锁、IndexedDB 存储、多种导入（私钥向导、URL、二维码）与导出（单条/批量 URL/QR/JSON）需求，并依循 `Frontend-Design-Skill.md` 实现高品质视觉设计。
-- **Current Task**: 移除界面技术实现说明文案与重新上线部署 (Clean Up Technical Explanations in UI & Redeploy)
-- **Current Status**: COMPLETED & LIVE REDEPLOYED (Clean Consumer-Facing UI, Live on Pages)
+- **Current Task**: 兼容 Google Authenticator 批量导出二维码导入与导出 (Google Authenticator Migration Import & Batch QR Export)
+- **Current Status**: COMPLETED (Tested & Built Locally; Ready for Deploy if Needed)
 - **Completed Work**:
-  - **UI Wording Optimization**: 全面清除了界面中所有面向开发者的底层程序术语（如 `PBKDF2`、`AES-GCM`、`IndexedDB`、`RFC 4648 Base32`、`内存销毁`、`WebCrypto` 等），转换为简洁、优雅的自然用户语言。
-  - **Dashboard Cleanup**: 彻底移除了主面板底部的技术参数横幅提示区（原“数据全流程经 PBKDF2... 页面关闭或锁定时解密密钥自动从内存销毁”），使整体界面视觉更加专注、精简、极简现代。
-  - **Redeployment Verification**: 重新执行 `./deploy.sh`，48/48 测试用例通过，静态产物上传成功并刷新 Cloudflare Pages 线上部署。
+  - **Google Authenticator Migration Codec (`src/lib/googleMigration.ts`)**: 实现零依赖 Protobuf 编解码器，支持解析与生成标准 `otpauth-migration://offline?data=...` 载荷（含 SHA-1/SHA-256/SHA-512、6/8 位、多二维码分片 `batch_size`/`batch_index`/`batch_id`、负数 varint、issuer/label 去重，以及自动跳过 HOTP/MD5 等不支持项）。
+  - **QR Decoding Resilience (`src/lib/qrcode.ts`)**: 为图片二维码解码补充白色背景填充（修复透明 PNG 识别失败）以及大图/小图多尺度降采样/放大回退，提升手机截图高密度二维码识别率。
+  - **Import Flows (`src/components/modals/ImportModal.tsx`)**: 在「二维码」「URI 链接」「批量导入」三个入口全面支持 `otpauth-migration://`；二维码页签支持多图上传、粘贴截图与摄像头连续扫描多张 Google 导出分片并合并导入。
+  - **Batch Export Flow (`src/components/modals/ExportBatchModal.tsx`)**: 新增「Google 二维码」导出页签，自动按最多 10 个账户或安全二维码容量分片生成可被 Google Authenticator 扫描的批量迁移二维码，支持翻页预览、PNG 下载与迁移链接复制。
+  - **Unit Tests (`src/tests/googleMigration.test.ts`)**: 新增 8 个单元测试覆盖编解码往返、分片逻辑、二维码生成、前缀去重、HOTP/MD5 跳过与异常输入校验。
 - **Modified / Created Files**:
-  - `src/components/dashboard/VaultDashboard.tsx` (移除底部技术说明条)
-  - `src/components/auth/SetupVault.tsx` (精简主密码说明与初始化文案)
-  - `src/components/auth/UnlockVault.tsx` (精简解锁说明与抹除重置提示)
-  - `src/components/modals/ExportBatchModal.tsx` (精简加密备份说明)
-  - `src/components/modals/ImportModal.tsx` (精简密钥格式校验提示)
-  - `src/App.tsx` (精简安全环境提示与加载文案)
-  - `docs/AI/SESSION_STATE.md`
+  - `src/lib/googleMigration.ts` (新增)
+  - `src/lib/qrcode.ts` (优化图片解码兼容性)
+  - `src/components/modals/ImportModal.tsx` (支持 Google 迁移二维码/链接导入与多分片合并)
+  - `src/components/modals/ExportBatchModal.tsx` (新增 Google 二维码批量导出页签)
+  - `src/tests/googleMigration.test.ts` (新增)
+  - `docs/AI/SESSION_STATE.md` (更新)
 - **Verification Commands & Results**:
-  - `./deploy.sh`: 7 个测试套件 48 个用例全部通过，产物打包无报错，Pages 自动上传完成。
-  - `curl -I https://otp-vault-9xl.pages.dev`: HTTP/2 200 OK，生产环境最新版本生效。
+  - `npm test`: 8 个测试套件 56 个用例全部通过 (`vitest run`)。
+  - `npm run build`: `tsc && vite build` 通过，无类型或打包错误。
 - **Unresolved Issues / Blockers**: None
-- **Risks and Assumptions**: None
-- **Next Task**: 项目已上线生产环境，可随时进行自定义域名绑定或后续体验迭代。
+- **Risks and Assumptions**: Google Authenticator 迁移协议固定按 30 秒周期处理；若保险库存在非 30 秒周期账户，导出界面已给出明确提示。
+- **Next Task**: 可按需执行 `./deploy.sh` 将更新重新部署到 Cloudflare Pages。

@@ -2,6 +2,12 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { TotpAccount, TotpAlgorithm } from '../../types/vault';
 import { normalizeBase32, isValidBase32 } from '../../lib/base32';
 import { parseOtpauthUri } from '../../lib/otpauth';
+import {
+  isGoogleMigrationUri,
+  parseGoogleMigrationUri,
+  GoogleMigrationAccount,
+  GoogleMigrationSkippedItem,
+} from '../../lib/googleMigration';
 import { generateTotp } from '../../lib/totp';
 import { decryptVaultData } from '../../lib/crypto';
 import {
@@ -21,6 +27,7 @@ import {
   ChevronDown,
   ChevronUp,
   Lock,
+  Smartphone,
 } from 'lucide-react';
 
 interface ImportModalProps {
@@ -32,6 +39,14 @@ interface ImportModalProps {
   onBatchImport: (
     accounts: Array<Omit<TotpAccount, 'id' | 'createdAt' | 'updatedAt'>>
   ) => Promise<{ added: number; skipped: number }>;
+}
+
+interface QrMigrationState {
+  accounts: GoogleMigrationAccount[];
+  skipped: GoogleMigrationSkippedItem[];
+  scannedIndices: number[];
+  batchSize: number;
+  batchId: number;
 }
 
 export const ImportModal: React.FC<ImportModalProps> = ({
@@ -58,6 +73,11 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     TotpAccount,
     'id' | 'createdAt' | 'updatedAt'
   > | null>(null);
+  const [urlMigration, setUrlMigration] = useState<{
+    accounts: GoogleMigrationAccount[];
+    skipped: GoogleMigrationSkippedItem[];
+  } | null>(null);
+  const [urlResult, setUrlResult] = useState<{ added: number; skipped: number } | null>(null);
   const [urlError, setUrlError] = useState<string | null>(null);
 
   // Tab 3: QR state
@@ -67,6 +87,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     TotpAccount,
     'id' | 'createdAt' | 'updatedAt'
   > | null>(null);
+  const [qrMigration, setQrMigration] = useState<QrMigrationState | null>(null);
+  const [qrBatchResult, setQrBatchResult] = useState<{ added: number; skipped: number } | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -85,6 +107,18 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
   // Common issuer presets
   const presets = ['GitHub', 'Google', 'Microsoft', 'AWS', 'Cloudflare', 'Binance'];
+
+  // Reset transient feedback when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setUrlResult(null);
+      setQrBatchResult(null);
+      setBatchResult(null);
+      setQrError(null);
+      setUrlError(null);
+      setBatchError(null);
+    }
+  }, [isOpen]);
 
   // Check if batchText looks like an EncryptedVaultPayload
   useEffect(() => {
@@ -119,15 +153,42 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     }
   }, [secret, algorithm, digits, period]);
 
-  // Handle URL parsing in real-time
+  // Handle URL parsing in real-time (supports both otpauth:// and otpauth-migration://)
   useEffect(() => {
-    if (!rawUrl.trim()) {
+    const trimmed = rawUrl.trim();
+    if (!trimmed) {
       setParsedFromUrl(null);
+      setUrlMigration(null);
       setUrlError(null);
       return;
     }
+
+    if (isGoogleMigrationUri(trimmed)) {
+      try {
+        const result = parseGoogleMigrationUri(trimmed);
+        setParsedFromUrl(null);
+        if (result.accounts.length === 0) {
+          setUrlMigration(null);
+          setUrlError(
+            result.skipped.length > 0
+              ? `未能导入任何 TOTP 账户（已跳过 ${result.skipped.length} 项不支持的条目）`
+              : '未在该 Google 导出链接中识别到有效账户'
+          );
+        } else {
+          setUrlMigration({ accounts: result.accounts, skipped: result.skipped });
+          setUrlError(null);
+        }
+      } catch (err: any) {
+        setParsedFromUrl(null);
+        setUrlMigration(null);
+        setUrlError(err?.message || '无法解析 Google Authenticator 导出链接');
+      }
+      return;
+    }
+
     try {
-      const parsed = parseOtpauthUri(rawUrl.trim());
+      const parsed = parseOtpauthUri(trimmed);
+      setUrlMigration(null);
       setParsedFromUrl({
         label: parsed.label,
         issuer: parsed.issuer,
@@ -139,6 +200,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       setUrlError(null);
     } catch (err: any) {
       setParsedFromUrl(null);
+      setUrlMigration(null);
       setUrlError(err?.message || '无法解析的 otpauth 链接');
     }
   }, [rawUrl]);
@@ -210,15 +272,60 @@ export const ImportModal: React.FC<ImportModalProps> = ({
           }
         }
       }, 300);
-    } catch (err: any) {
+    } catch {
       setQrError('无法访问摄像头，请检查权限或改用图片上传');
       stopCamera();
     }
   };
 
   const handleQrDecodedString = (decoded: string) => {
+    setQrBatchResult(null);
+
+    if (isGoogleMigrationUri(decoded)) {
+      try {
+        const result = parseGoogleMigrationUri(decoded);
+        if (result.accounts.length === 0 && result.skipped.length === 0) {
+          setQrError('该 Google Authenticator 二维码中不包含任何账户');
+          return;
+        }
+        setQrParsed(null);
+        setQrError(null);
+        setQrMigration((prev) => {
+          // Accumulate multi-QR batches sharing the same batchId (when batchSize > 1)
+          if (
+            prev &&
+            result.batchSize > 1 &&
+            prev.batchSize === result.batchSize &&
+            prev.batchId === result.batchId
+          ) {
+            if (prev.scannedIndices.includes(result.batchIndex)) {
+              return prev;
+            }
+            return {
+              accounts: [...prev.accounts, ...result.accounts],
+              skipped: [...prev.skipped, ...result.skipped],
+              scannedIndices: [...prev.scannedIndices, result.batchIndex].sort((a, b) => a - b),
+              batchSize: result.batchSize,
+              batchId: result.batchId,
+            };
+          }
+          return {
+            accounts: result.accounts,
+            skipped: result.skipped,
+            scannedIndices: [result.batchIndex],
+            batchSize: result.batchSize,
+            batchId: result.batchId,
+          };
+        });
+      } catch (err: any) {
+        setQrError(err?.message || '无法解析 Google Authenticator 导出二维码');
+      }
+      return;
+    }
+
     try {
       const parsed = parseOtpauthUri(decoded);
+      setQrMigration(null);
       setQrParsed({
         label: parsed.label,
         issuer: parsed.issuer,
@@ -228,25 +335,33 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         period: parsed.period,
       });
       setQrError(null);
-    } catch (err: any) {
-      setQrError('二维码中不是有效的 otpauth 动态口令协议');
+    } catch {
+      setQrError('二维码中不是有效的 otpauth 或 Google Authenticator 导出协议');
     }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
     setQrError(null);
-    try {
-      const decoded = await decodeQrCodeFromFile(file);
-      if (decoded) {
-        handleQrDecodedString(decoded);
-      } else {
-        setQrError('未能在该图片中识别出有效的二维码，请尝试更换清晰图片');
+
+    let decodedCount = 0;
+    for (let i = 0; i < files.length; i++) {
+      try {
+        const decoded = await decodeQrCodeFromFile(files[i]);
+        if (decoded) {
+          handleQrDecodedString(decoded);
+          decodedCount++;
+        }
+      } catch {
+        // continue checking remaining files
       }
-    } catch (err: any) {
-      setQrError(err?.message || '图片读取失败');
     }
+
+    if (decodedCount === 0) {
+      setQrError('未能在选中的图片中识别出有效的二维码，请尝试更换清晰图片');
+    }
+    e.target.value = '';
   };
 
   // Paste image handler for QR tab
@@ -263,7 +378,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             } else {
               setQrError('未能从剪贴板图片中识别二维码');
             }
-          } catch (err: any) {
+          } catch {
             setQrError('剪贴板图像解码失败');
           }
         }
@@ -300,11 +415,27 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   // Submit Handler for URL
   const handleUrlSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!parsedFromUrl) return;
+    if (urlMigration && urlMigration.accounts.length > 0) {
+      setSubmitting(true);
+      try {
+        const res = await onBatchImport(urlMigration.accounts);
+        setUrlResult(res);
+        setTimeout(() => {
+          setUrlMigration(null);
+          setRawUrl('');
+          onClose();
+        }, 1200);
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
 
+    if (!parsedFromUrl) return;
     setSubmitting(true);
     try {
       await onAddAccount(parsedFromUrl);
+      setRawUrl('');
       onClose();
     } finally {
       setSubmitting(false);
@@ -313,10 +444,26 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
   // Submit Handler for QR
   const handleQrSubmit = async () => {
+    if (qrMigration && qrMigration.accounts.length > 0) {
+      setSubmitting(true);
+      try {
+        const res = await onBatchImport(qrMigration.accounts);
+        setQrBatchResult(res);
+        setTimeout(() => {
+          setQrMigration(null);
+          onClose();
+        }, 1200);
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     if (!qrParsed) return;
     setSubmitting(true);
     try {
       await onAddAccount(qrParsed);
+      setQrParsed(null);
       onClose();
     } finally {
       setSubmitting(false);
@@ -382,11 +529,20 @@ export const ImportModal: React.FC<ImportModalProps> = ({
           }
         }
       } else {
-        // Line by line otpauth URLs
+        // Line by line otpauth:// or otpauth-migration:// URLs
         const lines = text.split('\n');
         for (const line of lines) {
           const trimmed = line.trim();
-          if (trimmed.toLowerCase().startsWith('otpauth://')) {
+          if (!trimmed) continue;
+
+          if (isGoogleMigrationUri(trimmed)) {
+            try {
+              const migration = parseGoogleMigrationUri(trimmed);
+              itemsToImport.push(...migration.accounts);
+            } catch {
+              // skip invalid lines
+            }
+          } else if (trimmed.toLowerCase().startsWith('otpauth://')) {
             try {
               const p = parseOtpauthUri(trimmed);
               itemsToImport.push({
@@ -405,7 +561,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       }
 
       if (itemsToImport.length === 0) {
-        setBatchError('未识别到任何有效的 TOTP 记录或 otpauth 链接');
+        setBatchError('未识别到任何有效的 TOTP 记录、otpauth 或 Google 导出链接');
         return;
       }
 
@@ -682,13 +838,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             <form onSubmit={handleUrlSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1.5 uppercase font-mono tracking-wider">
-                  粘贴 otpauth 协议链接
+                  粘贴 otpauth 或 Google 迁移链接
                 </label>
                 <textarea
                   rows={3}
                   value={rawUrl}
                   onChange={(e) => setRawUrl(e.target.value)}
-                  placeholder="otpauth://totp/GitHub:alice?secret=JBSWY3DPEHPK3PXP&issuer=GitHub"
+                  placeholder="支持 otpauth://totp/... 或 Google Authenticator 导出的 otpauth-migration://offline?data=..."
                   className="w-full px-3.5 py-2.5 rounded-xl bg-vault-950 border border-vault-700 font-mono text-xs text-white placeholder-slate-500 focus:outline-none focus:border-vault-gold"
                   autoFocus
                 />
@@ -731,12 +887,59 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                 </div>
               )}
 
+              {urlMigration && (
+                <div className="p-4 rounded-xl bg-vault-950 border border-vault-gold/40 space-y-2.5 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-mono text-vault-gold font-semibold flex items-center gap-1.5">
+                      <Smartphone className="w-3.5 h-3.5" />
+                      Google Authenticator 批量迁移包 ({urlMigration.accounts.length} 项)
+                    </span>
+                    {urlMigration.skipped.length > 0 && (
+                      <span className="text-[11px] text-amber-400">
+                        已跳过 {urlMigration.skipped.length} 项不支持条目
+                      </span>
+                    )}
+                  </div>
+                  <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">
+                    {urlMigration.accounts.map((acc, idx) => (
+                      <div
+                        key={`${acc.secret}-${idx}`}
+                        className="px-2.5 py-1.5 rounded-lg bg-vault-900 border border-vault-800 flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0 truncate">
+                          {acc.issuer && (
+                            <span className="text-vault-gold font-medium mr-1.5">{acc.issuer}</span>
+                          )}
+                          <span className="text-slate-200">{acc.label}</span>
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-500 flex-shrink-0">
+                          {acc.algorithm} · {acc.digits}位
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {urlResult && (
+                <div className="p-3 rounded-xl bg-vault-emerald/10 border border-vault-emerald/30 text-vault-emerald text-xs flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                  <span>
+                    成功导入 {urlResult.added} 项账户 (已跳过重复项 {urlResult.skipped} 项)
+                  </span>
+                </div>
+              )}
+
               <button
                 type="submit"
-                disabled={submitting || !parsedFromUrl}
+                disabled={submitting || (!parsedFromUrl && !urlMigration)}
                 className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-vault-gold to-vault-gold-light text-vault-950 font-semibold text-xs hover:brightness-110 active:scale-[0.99] transition-all disabled:opacity-50 shadow-lg shadow-vault-gold/20"
               >
-                {submitting ? '导入中...' : '确认导入该账户'}
+                {submitting
+                  ? '导入中...'
+                  : urlMigration
+                  ? `确认导入这 ${urlMigration.accounts.length} 个账户`
+                  : '确认导入该账户'}
               </button>
             </form>
           )}
@@ -748,15 +951,16 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                 <input
                   type="file"
                   accept="image/*"
+                  multiple
                   onChange={handleFileUpload}
                   className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                 />
                 <Upload className="w-8 h-8 text-vault-gold mx-auto mb-2" />
                 <p className="text-xs text-white font-medium mb-1">
-                  拖拽或点击上传包含二维码的图片
+                  拖拽或点击上传二维码图片（支持多选）
                 </p>
                 <p className="text-[11px] text-slate-500">
-                  支持快捷键直接在此窗口粘贴截图 (Ctrl+V / Cmd+V)
+                  兼容标准单条二维码与 Google Authenticator 批量导出二维码 · 支持 Ctrl+V / Cmd+V 粘贴截图
                 </p>
               </div>
 
@@ -825,6 +1029,86 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                   </button>
                 </div>
               )}
+
+              {qrMigration && (
+                <div className="p-4 rounded-xl bg-vault-950 border border-vault-gold/40 space-y-3 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-vault-emerald font-semibold">
+                      <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                      <span>
+                        已识别 Google Authenticator 导出码（共 {qrMigration.accounts.length} 项）
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQrMigration(null);
+                        setQrBatchResult(null);
+                      }}
+                      className="text-[11px] text-slate-400 hover:text-white underline"
+                    >
+                      清空
+                    </button>
+                  </div>
+
+                  {qrMigration.batchSize > 1 && (
+                    <div className="px-3 py-2 rounded-lg bg-vault-900 border border-vault-800 text-[11px] text-slate-300 flex items-center justify-between gap-2">
+                      <span>
+                        批次分片进度：已读取 {qrMigration.scannedIndices.length} / {qrMigration.batchSize} 张（第{' '}
+                        {qrMigration.scannedIndices.map((i) => i + 1).join('、')} 张）
+                      </span>
+                      {qrMigration.scannedIndices.length < qrMigration.batchSize && (
+                        <span className="text-vault-gold">可继续扫码/上传下一张</span>
+                      )}
+                    </div>
+                  )}
+
+                  {qrMigration.skipped.length > 0 && (
+                    <div className="px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-300">
+                      已自动跳过 {qrMigration.skipped.length} 项不支持的条目（如 HOTP 计次令牌）
+                    </div>
+                  )}
+
+                  <div className="max-h-44 overflow-y-auto space-y-1.5 pr-1">
+                    {qrMigration.accounts.map((acc, idx) => (
+                      <div
+                        key={`${acc.secret}-${idx}`}
+                        className="px-2.5 py-1.5 rounded-lg bg-vault-900 border border-vault-800 flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0 truncate">
+                          {acc.issuer && (
+                            <span className="text-vault-gold font-medium mr-1.5">{acc.issuer}</span>
+                          )}
+                          <span className="text-slate-200">{acc.label}</span>
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-500 flex-shrink-0">
+                          {acc.algorithm} · {acc.digits}位
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {qrBatchResult && (
+                    <div className="p-2.5 rounded-xl bg-vault-emerald/10 border border-vault-emerald/30 text-vault-emerald text-xs flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                      <span>
+                        成功导入 {qrBatchResult.added} 项账户 (已跳过重复项 {qrBatchResult.skipped} 项)
+                      </span>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleQrSubmit}
+                    disabled={submitting || qrMigration.accounts.length === 0}
+                    className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-vault-gold to-vault-gold-light text-vault-950 font-semibold text-xs hover:brightness-110 transition-all disabled:opacity-50 shadow-lg shadow-vault-gold/20"
+                  >
+                    {submitting
+                      ? '批量导入中...'
+                      : `确认导入这 ${qrMigration.accounts.length} 个账户`}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -833,7 +1117,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             <form onSubmit={handleBatchSubmit} className="space-y-4">
               <div className="flex items-center justify-between">
                 <label className="block text-xs font-medium text-slate-300 uppercase font-mono tracking-wider">
-                  多行 otpauth 链接 或 JSON 备份文本
+                  多行 otpauth / Google 迁移链接 或 JSON 备份
                 </label>
                 <label className="text-[11px] text-vault-gold hover:text-vault-gold-light cursor-pointer font-mono inline-flex items-center gap-1">
                   <Upload className="w-3.5 h-3.5" />
@@ -862,7 +1146,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                   rows={isEncryptedPayload ? 4 : 6}
                   value={batchText}
                   onChange={(e) => setBatchText(e.target.value)}
-                  placeholder={`每行一条 otpauth://totp/... 链接，或者粘贴从本系统导出的加密/明文 JSON 备份`}
+                  placeholder={`每行一条 otpauth://totp/... 或 otpauth-migration://offline?data=... 链接，或者粘贴从本系统导出的加密/明文 JSON 备份`}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-vault-950 border border-vault-700 font-mono text-xs text-white placeholder-slate-500 focus:outline-none focus:border-vault-gold"
                   autoFocus
                 />
